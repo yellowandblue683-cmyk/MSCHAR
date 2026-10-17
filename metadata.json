@@ -1,0 +1,6 @@
+{
+  "name": "יומן מסחר וניהול סיכונים",
+  "description": "אפליקציית מובייל ליומן מסחר, ניהול סיכונים ועוזר בינה מלאכותית NQ/MNQ עם זיכרון מלא והתאמת מודל גמיני",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

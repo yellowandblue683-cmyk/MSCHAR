@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e1726" />
+      <stop offset="100%" stop-color="#080b10" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2be3a0" />
+      <stop offset="100%" stop-color="#1f7dd1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" stroke="#1e293b" stroke-width="8" />
+  <!-- Candle 1 -->
+  <line x1="140" y1="160" x2="140" y2="380" stroke="#1f7dd1" stroke-width="12" stroke-linecap="round" />
+  <rect x="115" y="210" width="50" height="130" rx="8" fill="#1f7dd1" />
+  <!-- Candle 2 -->
+  <line x1="256" y1="110" x2="256" y2="410" stroke="#2be3a0" stroke-width="12" stroke-linecap="round" />
+  <rect x="231" y="160" width="50" height="180" rx="8" fill="#2be3a0" />
+  <!-- Candle 3 -->
+  <line x1="372" y1="70" x2="372" y2="330" stroke="#2be3a0" stroke-width="12" stroke-linecap="round" />
+  <rect x="347" y="110" width="50" height="150" rx="8" fill="#2be3a0" />
+  <!-- Trend Path -->
+  <path d="M110 360 Q 230 290, 260 210 T 400 100" fill="none" stroke="#f59e0b" stroke-width="10" stroke-linecap="round" stroke-dasharray="8 6" />
+  <circle cx="400" cy="100" r="14" fill="#f59e0b" />
+</svg>
