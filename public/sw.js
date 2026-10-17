@@ -1,5 +1,5 @@
-// Service Worker for Trading Journal PWA
-const CACHE_NAME = 'trading-journal-cache-v1';
+// Service Worker for Trading Journal PWA (v2)
+const CACHE_NAME = 'trading-journal-cache-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -12,12 +12,13 @@ const PRECACHE_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
         console.warn('Precache partial warning:', err);
       });
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -27,6 +28,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((name) => {
           if (name !== CACHE_NAME) {
+            console.log('Purging outdated cache:', name);
             return caches.delete(name);
           }
         })
@@ -38,39 +40,52 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Do NOT cache API calls (especially Gemini chat, key verification, etc.)
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(event.request));
+  // 1. Never intercept or cache API calls or dynamic Vite routes
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/@vite/') ||
+    url.pathname.startsWith('/@fs/') ||
+    url.pathname.startsWith('/src/')
+  ) {
     return;
   }
 
-  // Stale-while-revalidate for static assets, network first for HTML
-  if (event.request.mode === 'navigate') {
+  // 2. Network-first strategy for navigation (HTML) and scripts to avoid stale/black screen
+  if (
+    event.request.mode === 'navigate' ||
+    event.request.destination === 'document' ||
+    event.request.destination === 'script'
+  ) {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/index.html') || caches.match('/'))
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => cached || caches.match('/index.html') || caches.match('/'));
+        })
     );
     return;
   }
 
+  // 3. Stale-while-revalidate for static image and font assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch in background to update cache
-        fetch(event.request).then((networkResponse) => {
+      const fetchPromise = fetch(event.request)
+        .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((c) => c.put(event.request, copy));
           }
-        }).catch(() => {});
-        return cachedResponse;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
-        }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
-        return networkResponse;
-      });
+        })
+        .catch(() => cachedResponse);
+
+      return cachedResponse || fetchPromise;
     })
   );
 });

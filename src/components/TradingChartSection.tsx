@@ -56,8 +56,8 @@ export const TradingChartSection: React.FC<TradingChartSectionProps> = ({ state,
 
   // Filter trades based on selected account and time range
   const filteredTrades = useMemo(() => {
-    let list = state.trades.filter(t => state.selectedAccount === 'ALL' || t.account === state.selectedAccount);
-    list = list.sort((a, b) => a.ts - b.ts);
+    let list = (state.trades || []).filter(t => state.selectedAccount === 'ALL' || t.account === state.selectedAccount);
+    list = list.slice().sort((a, b) => a.ts - b.ts);
 
     if (timeRange === 'all') return list;
 

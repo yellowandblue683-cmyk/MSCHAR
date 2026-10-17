@@ -3,6 +3,7 @@ import { AppState, Trade } from '../types';
 import {
   entryDateLabel,
   offsetDateKey,
+  dateKey,
   getEntryStatusV2,
   fmtMoney,
   fmtTimeFromTs,
@@ -28,9 +29,9 @@ export const TradeEntryView: React.FC<TradeEntryViewProps> = ({
   onEditTrade,
   onDeleteTrade
 }) => {
-  const accounts = state.accounts;
-  const formAcct = state.formAccount && accounts.includes(state.formAccount) ? state.formAccount : accounts[0] || '';
-  const entryDateKey = offsetDateKey(state.entryDateOffset);
+  const accounts = Array.isArray(state.accounts) && state.accounts.length > 0 ? state.accounts : ['APEX-25K-01'];
+  const formAcct = state.formAccount && accounts.includes(state.formAccount) ? state.formAccount : accounts[0] || 'APEX-25K-01';
+  const entryDateKey = offsetDateKey(state.entryDateOffset || 0);
   const status = getEntryStatusV2(state, formAcct, entryDateKey);
   const contracts = state.formContracts != null ? state.formContracts : 1;
   const effectiveGross = state.formCustomGross != null ? state.formCustomGross : 0;
@@ -38,8 +39,8 @@ export const TradeEntryView: React.FC<TradeEntryViewProps> = ({
   const effectiveNet = effectiveGross - effectiveCommission;
   const atrRange = state.atrRanges ? state.atrRanges[formAcct] : undefined;
 
-  const dayTrades = state.trades
-    .filter(t => (state.selectedAccount === 'ALL' || t.account === state.selectedAccount) && offsetDateKey(state.entryDateOffset) === offsetDateKey(Math.floor((Date.now() - t.ts)/(86400000))))
+  const dayTrades = (state.trades || [])
+    .filter(t => (state.selectedAccount === 'ALL' || t.account === state.selectedAccount) && dateKey(t.ts) === entryDateKey)
     .sort((a, b) => b.ts - a.ts);
 
   // Time picker values

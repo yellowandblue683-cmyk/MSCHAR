@@ -11,6 +11,23 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
+// CORS headers for all API requests (supporting PWAs, mobile, preview iframes)
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-gemini-api-key");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Helper to clean API key strings (strips quotes, whitespace, Bearer prefix)
+function sanitizeApiKey(k: unknown): string {
+  if (!k || typeof k !== "string") return "";
+  return k.trim().replace(/^Bearer\s+/i, "").replace(/^["']|["']$/g, "").trim();
+}
+
 // System instruction ensuring the AI acts as an elite NQ/MNQ trading risk manager & mentor
 const TRADING_ASSISTANT_SYSTEM_INSTRUCTION = `
 אתה עוזר בינה מלאכותית מקצועי, מנטור מסחר ומנהל סיכונים אישי (Risk Desk Manager) המתמחה במסחר בחוזים עתידיים על מדד הנאסד״ק (NQ / MNQ) ובפסיכולוגיית מסחר.
@@ -40,62 +57,108 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: Date.now() });
 });
 
-// Endpoint to verify API key status across multiple route aliases
-app.all(["/api/gemini/verify-key", "/api/verify-key", "/api/gemini/verify", "/api/verify"], async (req, res) => {
-  const userKey = (req.headers["x-gemini-api-key"] as string) || req.body?.apiKey || (req.query?.apiKey as string);
-  const apiKey = (userKey && String(userKey).trim()) || process.env.GEMINI_API_KEY;
+// Comprehensive verification endpoint aliases (handles GET, POST, etc.)
+app.all(
+  ["/api/gemini/verify-key", "/api/verify-key", "/api/gemini/verify", "/api/verify", "/api/key/verify", "/api/check-key"],
+  async (req, res) => {
+    const rawKey =
+      (req.headers["x-gemini-api-key"] as string) ||
+      req.body?.apiKey ||
+      req.body?.key ||
+      (req.query?.apiKey as string) ||
+      (req.query?.key as string);
 
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+    const cleanUserKey = sanitizeApiKey(rawKey);
+    const apiKey = cleanUserKey || sanitizeApiKey(process.env.GEMINI_API_KEY);
+
+    if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
+      return res.json({
+        valid: false,
+        message: "לא הוגדר מפתח API. אנא הדבק את מפתח ה-API האישי שלך המתחיל ב-AIzaSy."
+      });
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
+
+    let verified = false;
+    let verifiedModel = "";
+    let lastError = "";
+
+    // 1. Ultra-fast check: models.list verifies credentials in ~120ms without generation latency
+    try {
+      const modelIterable = await withTimeout(ai.models.list(), 3500, "פסק זמן בבדיקת מודלים");
+      for await (const m of modelIterable) {
+        if (m && m.name) {
+          verified = true;
+          verifiedModel = m.name;
+          break;
+        }
+      }
+    } catch (listErr: any) {
+      lastError = listErr?.message || String(listErr);
+      console.warn("[Gemini Verify] models.list check error:", lastError);
+    }
+
+    // 2. Fallback check: try quick ping on gemini-3.1-flash-lite if models.list had an issue
+    if (!verified) {
+      try {
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: "gemini-3.1-flash-lite",
+            contents: "ping",
+          }),
+          4000,
+          "פסק זמן"
+        );
+        if (response && response.text) {
+          verified = true;
+          verifiedModel = "gemini-3.1-flash-lite";
+        }
+      } catch (err: any) {
+        lastError = err?.message || String(err);
+      }
+    }
+
+    if (verified) {
+      return res.json({
+        valid: true,
+        isCustom: !!cleanUserKey,
+        model: verifiedModel || "gemini-3.1-flash-lite",
+        message: cleanUserKey
+          ? "מפתח API אישי אומת וחובר בהצלחה לצ׳אט!"
+          : "מפתח המערכת פעיל ומחובר בהצלחה לצ׳אט!"
+      });
+    }
+
+    let friendlyMessage = "לא ניתן היה לאמת את המפתח מול שרתי Google.";
+    if (lastError.includes("API_KEY_INVALID") || lastError.includes("API key not valid")) {
+      friendlyMessage = "מפתח ה-API אינו תקין. ודא שהעתקת מפתח מלא מ-Google AI Studio (מתחיל ב-AIzaSy).";
+    } else if (lastError.includes("PERMISSION_DENIED")) {
+      friendlyMessage = "הרשאה נדחתה. ודא שה-API של Gemini פתוח ופעיל בפרויקט שלך.";
+    } else if (lastError.includes("RESOURCE_EXHAUSTED") || lastError.includes("429")) {
+      // Quota exceeded still means the key is valid!
+      return res.json({
+        valid: true,
+        isCustom: !!cleanUserKey,
+        message: "המפתח תקין ומחובר! (נמצא כרגע במגבלת מכסה זמנית של גוגל)"
+      });
+    } else if (lastError) {
+      friendlyMessage = `שגיאה באימות המפתח: ${lastError.slice(0, 120)}`;
+    }
+
     return res.json({
       valid: false,
-      message: "לא הוגדר מפתח API. ניתן להזין מפתח אישי בטאב העוזר או בהגדרות."
+      message: friendlyMessage
     });
   }
-
-  const testModels = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-flash-lite-latest"];
-  let verified = false;
-  let lastError = "";
-
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
-  });
-
-  for (const m of testModels) {
-    try {
-      const response = await ai.models.generateContent({
-        model: m,
-        contents: "ping",
-      });
-      if (response && response.text) {
-        verified = true;
-        break;
-      }
-    } catch (err: any) {
-      lastError = err?.message || String(err);
-      console.warn(`[Gemini Verify] Model ${m} test:`, lastError);
-    }
-  }
-
-  if (verified) {
-    return res.json({
-      valid: true,
-      isCustom: !!userKey,
-      message: userKey ? "מפתח API אישי חובר בהצלחה לצ׳אט!" : "מפתח המערכת פעיל ומחובר בהצלחה לצ׳אט!"
-    });
-  }
-
-  return res.json({
-    valid: false,
-    message: lastError.includes("API_KEY_INVALID")
-      ? "מפתח ה-API אינו תקין. ודא שהעתקת מפתח שלם מ-Google AI Studio המתחיל ב-AIzaSy."
-      : (lastError || "לא ניתן היה לאמת את המפתח מול שרתי Google.")
-  });
-});
+);
 
 function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
   return Promise.race([

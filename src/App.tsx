@@ -70,27 +70,53 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && Array.isArray(parsed.trades)) {
+        if (parsed && typeof parsed === 'object') {
+          const accounts = Array.isArray(parsed.accounts) && parsed.accounts.length > 0
+            ? parsed.accounts
+            : DEFAULT_ACCOUNTS.slice();
+          const trades = Array.isArray(parsed.trades)
+            ? parsed.trades
+            : ANCIENT_TRADES.slice();
+
           return {
             ...parsed,
-            entryDateOffset: parsed.entryDateOffset || 0,
-            formContracts: parsed.formContracts || 1,
-            formOutcome: parsed.formOutcome || 'WIN',
+            accounts,
+            trades,
+            selectedAccount: parsed.selectedAccount || 'ALL',
+            maxDailyLoss: typeof parsed.maxDailyLoss === 'number' ? parsed.maxDailyLoss : DEFAULT_MAX_DAILY_LOSS,
+            dayNotes: parsed.dayNotes && typeof parsed.dayNotes === 'object' ? parsed.dayNotes : {},
+            atrRanges: parsed.atrRanges && typeof parsed.atrRanges === 'object' ? parsed.atrRanges : {
+              'APEX-25K-01': 't2',
+              'APEX-25K-02': 't2',
+              'TOPSTEP-50K': 't3',
+              'PERSONAL-NQ': 't2'
+            },
+            theme: parsed.theme || DEFAULT_THEME,
+            font: parsed.font || DEFAULT_FONT,
+            activeTab: parsed.activeTab || 'entry',
+            entryDateOffset: typeof parsed.entryDateOffset === 'number' ? parsed.entryDateOffset : 0,
+            formAccount: parsed.formAccount && accounts.includes(parsed.formAccount) ? parsed.formAccount : accounts[0],
             formDirection: parsed.formDirection || 'LONG',
             formVwap: parsed.formVwap !== undefined ? parsed.formVwap : true,
+            formContracts: typeof parsed.formContracts === 'number' ? parsed.formContracts : 1,
+            formOutcome: parsed.formOutcome || 'WIN',
             formRR: parsed.formRR || '2',
             formCustomGross: parsed.formCustomGross !== undefined ? parsed.formCustomGross : null,
             formTime: parsed.formTime || (() => {
               const d = new Date();
               return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
             })(),
+            dashboardEditMode: !!parsed.dashboardEditMode,
+            widgetLabels: parsed.widgetLabels && typeof parsed.widgetLabels === 'object' ? parsed.widgetLabels : {},
             customMetrics: Array.isArray(parsed.customMetrics) && parsed.customMetrics.length > 0 ? parsed.customMetrics : DEFAULT_CUSTOM_METRICS,
             selectedAIModel: parsed.selectedAIModel || 'auto',
             enableWebSearch: parsed.enableWebSearch !== undefined ? parsed.enableWebSearch : true
           };
         }
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Failed to parse local storage state, using defaults:', e);
+    }
 
     const now = new Date();
     const defaultTime = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;

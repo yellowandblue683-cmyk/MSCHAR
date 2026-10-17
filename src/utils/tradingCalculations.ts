@@ -138,8 +138,9 @@ export function chapterOf(t: Trade): number {
 }
 
 export function tradesFor(state: AppState, account: string): Trade[] {
-  if (account === 'ALL') return state.trades.slice();
-  return state.trades.filter(t => t.account === account);
+  const allTrades = Array.isArray(state?.trades) ? state.trades : [];
+  if (account === 'ALL') return allTrades.slice();
+  return allTrades.filter(t => t.account === account);
 }
 
 export function statsTradesFor(state: AppState, account: string): Trade[] {
@@ -147,7 +148,8 @@ export function statsTradesFor(state: AppState, account: string): Trade[] {
 }
 
 export function getAccountDayTrades(state: AppState, account: string, dkey: string): Trade[] {
-  return state.trades
+  const allTrades = Array.isArray(state?.trades) ? state.trades : [];
+  return allTrades
     .filter(t => t.account === account && dateKey(t.ts) === dkey)
     .sort((a, b) => a.ts - b.ts);
 }

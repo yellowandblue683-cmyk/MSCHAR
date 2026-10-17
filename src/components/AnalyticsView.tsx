@@ -435,7 +435,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ state, onOpenHisto
       </div>
 
       {/* Multi-Account Comparison (if ALL selected) */}
-      {state.selectedAccount === 'ALL' && state.accounts.length > 0 && (
+      {state.selectedAccount === 'ALL' && Array.isArray(state.accounts) && state.accounts.length > 0 && (
         <div className="bg-[var(--panel)] border border-[var(--border-soft)] rounded-2xl p-4 space-y-3">
           <div className="text-xs font-bold text-[var(--text)] pb-1 border-b border-[var(--border-soft)]">
             השוואת חשבונות

@@ -36,9 +36,9 @@ interface AIAssistantViewProps {
 const AVAILABLE_MODELS = [
   { id: 'auto', name: 'אוטומטי חכם (מענה מהיר ועמיד בעומסים)', badge: 'מומלץ', desc: 'משתמש ב-Gemini 3.1 Flash Lite ועובר לגיבוי בעומס' },
   { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', badge: 'בזק', desc: 'מהיר ביותר (שנייה אחת), אמין ויציב מאוד' },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', badge: 'מתקדם', desc: 'מודל דגל מתקדם לניתוח מסחר ועסקאות' },
+  { id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', badge: 'הכי חדש', desc: 'מודל הדגל החדש ביותר של Google' },
   { id: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite Latest', badge: 'יציב', desc: 'גרסה עדכנית של מודל פלאש לייט' },
-  { id: 'gemini-4-argon', name: 'Gemini 4 Argon', badge: 'חשיבה', desc: 'מודל חשיבה מתקדם ומעמיק ביותר' }
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash Preview', badge: 'מתקדם', desc: 'מודל מתקדם לניתוח מסחר ועסקאות' }
 ];
 
 export const AIAssistantView: React.FC<AIAssistantViewProps> = ({ state, onOpenSettings, onUpdateState }) => {

@@ -2,9 +2,16 @@ import { AppState, AIMessage, CustomStatMetric } from '../types';
 import { statsTradesFor, getEntryStatusV2, dateKey, todayKey, fmtMoney } from '../utils/tradingCalculations';
 import { API_KEY_STORAGE } from '../data/constants';
 
+// Helper to sanitize API keys from user input (strips spaces, quotes, Bearer prefix)
+export function sanitizeApiKey(k: string | null | undefined): string {
+  if (!k || typeof k !== 'string') return '';
+  return k.trim().replace(/^Bearer\s+/i, '').replace(/^["']|["']$/g, '').trim();
+}
+
 export function getStoredUserApiKey(): string {
   try {
-    return localStorage.getItem(API_KEY_STORAGE) || '';
+    const raw = localStorage.getItem(API_KEY_STORAGE) || '';
+    return sanitizeApiKey(raw);
   } catch {
     return '';
   }
@@ -12,18 +19,27 @@ export function getStoredUserApiKey(): string {
 
 export function setStoredUserApiKey(key: string): void {
   try {
-    if (key.trim()) {
-      localStorage.setItem(API_KEY_STORAGE, key.trim());
+    const clean = sanitizeApiKey(key);
+    if (clean) {
+      localStorage.setItem(API_KEY_STORAGE, clean);
     } else {
       localStorage.removeItem(API_KEY_STORAGE);
     }
   } catch {}
 }
 
+/**
+ * Verifies a Gemini API key.
+ * Tries server verification endpoint first; if server returns 404 or fails,
+ * performs bulletproof client-side verification directly against Google's API.
+ */
 export async function verifyGeminiApiKey(apiKey?: string): Promise<{ valid: boolean; message: string; isCustom?: boolean }> {
-  const key = (apiKey !== undefined ? apiKey : getStoredUserApiKey()).trim();
-  const endpoints = ['/api/gemini/verify-key', '/api/verify-key', '/api/gemini/verify'];
-  let lastMessage = '';
+  const rawKey = apiKey !== undefined ? apiKey : getStoredUserApiKey();
+  const cleanKey = sanitizeApiKey(rawKey);
+
+  // If testing empty key, we are verifying the server/system key
+  const endpoints = ['/api/gemini/verify-key', '/api/verify-key', '/api/gemini/verify', '/api/verify'];
+  let serverMessage = '';
 
   for (const ep of endpoints) {
     try {
@@ -31,27 +47,78 @@ export async function verifyGeminiApiKey(apiKey?: string): Promise<{ valid: bool
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(key ? { 'x-gemini-api-key': key } : {})
+          ...(cleanKey ? { 'x-gemini-api-key': cleanKey } : {})
         },
-        body: JSON.stringify({ apiKey: key })
+        body: JSON.stringify({ apiKey: cleanKey })
       });
 
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        return {
+          valid: !!data.valid,
+          message: data.message || (data.valid ? 'המפתח תקין ומחובר בהצלחה!' : 'מפתח ה-API אינו תקין.'),
+          isCustom: !!cleanKey
+        };
       }
+
       const data = await res.json().catch(() => null);
-      lastMessage = data?.message || data?.error || `HTTP ${res.status}`;
+      serverMessage = data?.message || data?.error || '';
       if (res.status !== 404) {
-        break; // Stop retrying if not 404
+        break;
       }
     } catch (err: any) {
-      lastMessage = err?.message || 'שגיאת תקשורת';
+      serverMessage = err?.message || '';
+    }
+  }
+
+  // If server check failed with 404 or network issue AND a custom key was provided:
+  // Fall back to direct client-side verification against Google's Generative Language API
+  if (cleanKey) {
+    try {
+      const directUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}&pageSize=1`;
+      const directRes = await fetch(directUrl);
+      const directData = await directRes.json().catch(() => null);
+
+      if (directRes.ok && directData?.models) {
+        return {
+          valid: true,
+          isCustom: true,
+          message: 'מפתח API אישי אומת ישירות מול Google וחובר בהצלחה לצ׳אט!'
+        };
+      }
+
+      if (directData?.error?.message) {
+        const gErr = directData.error.message;
+        if (gErr.includes('API_KEY_INVALID') || gErr.includes('API key not valid')) {
+          return {
+            valid: false,
+            message: 'מפתח ה-API אינו תקין. ודא שהעתקת מפתח מלא מ-Google AI Studio (המתחיל ב-AIzaSy).'
+          };
+        }
+        if (gErr.includes('PERMISSION_DENIED')) {
+          return {
+            valid: false,
+            message: 'הרשאה נדחתה. ודא שה-API של Gemini פתוח ופעיל בפרויקט שלך.'
+          };
+        }
+        if (gErr.includes('429') || gErr.includes('RESOURCE_EXHAUSTED')) {
+          return {
+            valid: true,
+            isCustom: true,
+            message: 'המפתח תקין ומחובר! (נמצא כרגע במגבלת מכסה זמנית של גוגל)'
+          };
+        }
+      }
+    } catch (clientErr) {
+      console.warn('Direct Google verify fallback failed:', clientErr);
     }
   }
 
   return {
     valid: false,
-    message: lastMessage || 'שגיאה באימות מפתח ה-API מול השרת'
+    message: serverMessage && !serverMessage.includes('404')
+      ? serverMessage
+      : 'לא ניתן היה לאמת את המפתח מול שרתי Google. ודא שהמפתח תקין ומתחיל ב-AIzaSy.'
   };
 }
 
@@ -227,5 +294,42 @@ export async function sendAIMessage(
     }
   }
 
-  throw new Error(lastError || 'לא ניתן היה לקבל תשובה מהשרת');
+  // Direct client-side Gemini fallback if server returned 404 and custom key is present
+  if (customKey) {
+    try {
+      const modelToUse = options?.model && options.model !== 'auto' ? options.model : 'gemini-3.1-flash-lite';
+      const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${customKey}`;
+
+      const contents = [
+        {
+          role: 'user',
+          parts: [{ text: `נתוני יומן המסחר:\n${JSON.stringify(tradingContext)}\n\nהודעת הסוחר:\n${message}` }]
+        }
+      ];
+
+      const directRes = await fetch(directUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents })
+      });
+
+      if (directRes.ok) {
+        const directData = await directRes.json();
+        const replyText = directData.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (replyText) {
+          return {
+            text: replyText,
+            modelUsed: modelToUse,
+            isFallback: true,
+            fallbackReason: 'חיבור ישיר באמצעות מפתח ה-API האישי שלך',
+            webSearchUsed: false
+          };
+        }
+      }
+    } catch (directErr) {
+      console.warn('Direct client Gemini chat fallback failed:', directErr);
+    }
+  }
+
+  throw new Error(lastError || 'לא ניתן היה לקבל תשובה משרת ה-AI. בדוק את המפתח שלך ונסה שנית.');
 }

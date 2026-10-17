@@ -48,7 +48,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({ state,
 
   // Aggregate trades by date key
   const tradesByDate: Record<string, { count: number; net: number; wins: number; losses: number; trades: Trade[] }> = {};
-  state.trades
+  (state.trades || [])
     .filter(t => state.selectedAccount === 'ALL' || t.account === state.selectedAccount)
     .forEach(t => {
       const dk = dateKey(t.ts);
@@ -107,23 +107,24 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({ state,
   const daysOfWeek = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש (שבת)'];
 
   // Parse selected date
-  const [selYear, selMonth, selDay] = selectedDateKey.split('-').map(Number);
-  const selectedDateObj = new Date(selYear, (selMonth || 1) - 1, selDay || 1);
+  const safeDateKey = selectedDateKey || todayKey();
+  const [selYear, selMonth, selDay] = safeDateKey.split('-').map(Number);
+  const selectedDateObj = new Date(selYear || year, (selMonth || 1) - 1, selDay || 1);
   const isSelectedSaturday = selectedDateObj.getDay() === 6;
 
   // Selected date week summary
-  const selectedWeekSummary = getWeekSummaryForDate(state, selYear, (selMonth || 1) - 1, selDay || 1, state.selectedAccount);
+  const selectedWeekSummary = getWeekSummaryForDate(state, selYear || year, (selMonth || 1) - 1, selDay || 1, state.selectedAccount);
 
   // Day's trades
-  const selectedTrades = state.trades
-    .filter(t => (state.selectedAccount === 'ALL' || t.account === state.selectedAccount) && dateKey(t.ts) === selectedDateKey)
+  const selectedTrades = (state.trades || [])
+    .filter(t => (state.selectedAccount === 'ALL' || t.account === state.selectedAccount) && dateKey(t.ts) === safeDateKey)
     .sort((a, b) => a.ts - b.ts);
 
   const selectedNet = selectedTrades.reduce((s, t) => s + t.netPnl, 0);
 
   // Calculate monthly stats for quick summary
   const monthPrefix = `${year}-${pad2(month + 1)}`;
-  const monthTrades = state.trades.filter(t => {
+  const monthTrades = (state.trades || []).filter(t => {
     if (state.selectedAccount !== 'ALL' && t.account !== state.selectedAccount) return false;
     return dateKey(t.ts).startsWith(monthPrefix);
   });

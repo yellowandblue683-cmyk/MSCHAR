@@ -20,7 +20,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   isAITab
 }) => {
   const [openMenu, setOpenMenu] = useState(false);
-
+  const safeAccounts = Array.isArray(accounts) ? accounts : [];
   const displayLabel = selectedAccount === 'ALL' ? 'כל החשבונות' : selectedAccount;
 
   return (
@@ -57,7 +57,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               <span>כל החשבונות</span>
               {selectedAccount === 'ALL' && <span>✓</span>}
             </button>
-            {accounts.map(a => (
+            {safeAccounts.map(a => (
               <button
                 key={a}
                 type="button"
